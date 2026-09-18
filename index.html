@@ -76,6 +76,10 @@
     #sheet .label.skipped::after {
       content: "SKIP " attr(data-slot); color: #991b1b; font: bold 6pt Arial, sans-serif;
     }
+    #sheet .label.custom-label {
+      background: #eff6ff; outline: .3mm solid #2563eb; outline-offset: -.3mm;
+    }
+    #sheet.edit-custom .label { cursor: text; }
     .calibration .label { outline: .15mm solid #111; outline-offset: -.15mm; }
     .calibration .label::before { content: attr(data-slot); color: #111; font: 6pt Arial, sans-serif; }
     .calibration .label::after {
@@ -166,6 +170,7 @@
       .label.empty::after { content: none; }
       .label.skipped { background: transparent !important; outline: none !important; }
       .label.skipped::after { content: none !important; }
+      .label.custom-label { background: transparent !important; outline: none !important; }
     }
   </style>
 </head>
@@ -174,7 +179,7 @@
     <header class="no-print">
       <div>
         <h1>Label Sticker Studio</h1>
-        <p class="sub">200 × 160 mm sheet · 9 columns × 16 rows · 20 × 8 mm labels</p>
+        <p class="sub" id="sheetSummary">200 × 160 mm sheet · 9 columns × 16 rows · 20 × 8 mm labels</p>
       </div>
       <button class="primary" id="printBtn">Download labels PDF</button>
     </header>
@@ -210,25 +215,48 @@
             <button class="quiet" id="clearSkippedBtn" type="button">Clear skipped (0)</button>
           </div>
           <p class="hint" style="margin-top:8px">Turn on marking, then tap one position or drag from one corner to another to select a rectangular area. Start on a highlighted position to clear an area. Highlighted positions remain blank in the PDF.</p>
+          <div class="actions">
+            <button class="quiet" id="customModeBtn" type="button" aria-pressed="false">Enter individual labels</button>
+            <button class="quiet" id="clearCustomBtn" type="button">Clear individual (0)</button>
+          </div>
+          <p class="hint" style="margin-top:8px">Turn on individual labels, then tap any sticker position and type its exact value. Individual labels reserve those positions, and sequences automatically continue around them.</p>
         </section>
 
         <section class="section">
-          <h2>2. Physical sheet layout</h2>
+          <h2>2. Page and label layout</h2>
           <div class="fields">
-            <label>First label from left (mm)
+            <label>Page width (mm)
+              <input id="pageWidth" type="number" value="200" min="20" max="1000" step="0.1">
+            </label>
+            <label>Page height (mm)
+              <input id="pageHeight" type="number" value="160" min="20" max="1000" step="0.1">
+            </label>
+            <label>Columns
+              <input id="columns" type="number" value="9" min="1" max="50" step="1">
+            </label>
+            <label>Rows
+              <input id="rows" type="number" value="16" min="1" max="100" step="1">
+            </label>
+            <label>Label width (mm)
+              <input id="labelWidth" type="number" value="20" min="1" max="500" step="0.1">
+            </label>
+            <label>Label height (mm)
+              <input id="labelHeight" type="number" value="8" min="1" max="500" step="0.1">
+            </label>
+            <label>Left margin (mm)
               <input id="left" type="number" value="2" step="0.1">
             </label>
-            <label>First label from top (mm)
+            <label>Top margin (mm)
               <input id="top" type="number" value="2" step="0.1">
             </label>
-            <label>Horizontal pitch (mm)
-              <input id="pitchX" type="number" value="22" min="1" step="0.05">
+            <label>Horizontal gap (mm)
+              <input id="gapX" type="number" value="2" min="0" step="0.05">
             </label>
-            <label>Vertical pitch (mm)
-              <input id="pitchY" type="number" value="10" min="1" step="0.05">
+            <label>Vertical gap (mm)
+              <input id="gapY" type="number" value="2" min="0" step="0.05">
             </label>
           </div>
-          <p class="hint" style="margin-top:9px">Exact reset: 20 mm label + 2 mm gap = 22 mm horizontal pitch; 8 mm label + 2 mm gap = 10 mm vertical pitch.</p>
+          <p class="hint" style="margin-top:9px">The right and bottom margins are calculated from the page size, label size, margins, gaps, rows and columns. The app warns you if the grid exceeds the page.</p>
         </section>
 
         <section class="section">
@@ -257,7 +285,7 @@
 
         <div id="status" class="status" role="status"></div>
         <div class="note">
-          <strong>Use the downloaded PDF:</strong> it is exactly one 200 × 160 mm page. Print at 100% / Actual Size with no scaling. Do not force Landscape—the PDF already contains the correct wide orientation.
+          <strong>Use the downloaded PDF:</strong> it is exactly one page at the dimensions selected above. Print at 100% / Actual Size with no scaling. Do not force an orientation—the PDF already contains the selected page shape.
         </div>
         <div class="note">
           <strong>HP 323dnw warning:</strong> its officially supported custom sheets are at least 216 mm long and no more than 148.5 mm wide. A 200 × 160 mm sheet is outside its supported feed range, so physical skew may remain even with a correct PDF.
@@ -265,7 +293,7 @@
         <section class="section">
           <h2>How to calibrate without wasting labels</h2>
           <ol>
-            <li>Cut plain paper to exactly 200 × 160 mm.</li>
+            <li>Cut plain paper to exactly the page width and height selected above.</li>
             <li>Use <strong>Download calibration PDF</strong>, open it, and print at Actual Size.</li>
             <li>Place it behind the sticker sheet and hold both against a light.</li>
             <li>If every box is shifted, change the right/down correction.</li>
@@ -288,9 +316,7 @@
   <script>
     (() => {
       'use strict';
-      const COLS = 9, ROWS = 16, TOTAL = COLS * ROWS;
-      const LABEL_W = 20, LABEL_H = 8, SHEET_W = 200, SHEET_H = 160;
-      const ids = ['fontSize','fontFamily','duplicate','omitFirstRow','left','top','pitchX','pitchY','offsetX','offsetLeft','offsetY','offsetUp','guides'];
+      const ids = ['fontSize','fontFamily','duplicate','omitFirstRow','pageWidth','pageHeight','columns','rows','labelWidth','labelHeight','left','top','gapX','gapY','offsetX','offsetLeft','offsetY','offsetUp','guides'];
       const el = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
       const sequencesContainer = document.getElementById('sequences');
       const sheet = document.getElementById('sheet');
@@ -301,11 +327,16 @@
       const readout = document.getElementById('readout');
       const skipModeBtn = document.getElementById('skipModeBtn');
       const clearSkippedBtn = document.getElementById('clearSkippedBtn');
-      const defaults = { left: 2, top: 2, pitchX: 22, pitchY: 10, offsetX: 0, offsetLeft: 0, offsetY: 0, offsetUp: 0, omitFirstRow: true };
+      const customModeBtn = document.getElementById('customModeBtn');
+      const clearCustomBtn = document.getElementById('clearCustomBtn');
+      const sheetSummary = document.getElementById('sheetSummary');
+      const defaults = { pageWidth: 200, pageHeight: 160, columns: 9, rows: 16, labelWidth: 20, labelHeight: 8, left: 2, top: 2, gapX: 2, gapY: 2, offsetX: 0, offsetLeft: 0, offsetY: 0, offsetUp: 0, omitFirstRow: true };
       const defaultSequence = { prefix: '', start: 1, end: 135, padding: 4, startSlot: 1 };
       let calibrationMode = false;
       let skipSelectionMode = false;
+      let customSelectionMode = false;
       let skippedSlots = new Set();
+      let customLabels = new Map();
       let skipDrag = null;
 
       const num = (node, fallback) => Number.isFinite(Number(node.value)) ? Number(node.value) : fallback;
@@ -366,12 +397,13 @@
       }
 
       function getSequences() {
+        const total = Math.max(1, Math.trunc(num(el.columns, defaults.columns))) * Math.max(1, Math.trunc(num(el.rows, defaults.rows)));
         return [...sequencesContainer.querySelectorAll('.sequence-card')].map(card => ({
           prefix: card.querySelector('[data-field="prefix"]').value,
           start: Math.trunc(num(card.querySelector('[data-field="start"]'), 1)),
           end: Math.trunc(num(card.querySelector('[data-field="end"]'), 1)),
           padding: Math.max(0, Math.min(12, Math.trunc(num(card.querySelector('[data-field="padding"]'), 0)))),
-          startSlot: Math.max(1, Math.min(TOTAL, Math.trunc(num(card.querySelector('[data-field="startSlot"]'), 1))))
+          startSlot: Math.max(1, Math.min(total, Math.trunc(num(card.querySelector('[data-field="startSlot"]'), 1))))
         }));
       }
 
@@ -380,24 +412,35 @@
         const moveLeft = Math.max(0, num(el.offsetLeft, 0));
         const moveDown = Math.max(0, num(el.offsetY, 0));
         const moveUp = Math.max(0, num(el.offsetUp, 0));
+        const columns = Math.max(1, Math.min(50, Math.trunc(num(el.columns, defaults.columns))));
+        const rows = Math.max(1, Math.min(100, Math.trunc(num(el.rows, defaults.rows))));
+        const total = columns * rows;
+        const labelWidth = Math.max(1, num(el.labelWidth, defaults.labelWidth));
+        const labelHeight = Math.max(1, num(el.labelHeight, defaults.labelHeight));
         return {
           sequences: getSequences(),
           fontSize: Math.max(4, num(el.fontSize, 9)), fontFamily: el.fontFamily.value,
           duplicate: el.duplicate.checked,
           omitFirstRow: el.omitFirstRow.checked,
+          pageWidth: Math.max(20, num(el.pageWidth, defaults.pageWidth)),
+          pageHeight: Math.max(20, num(el.pageHeight, defaults.pageHeight)),
+          columns, rows, total, labelWidth, labelHeight,
           left: num(el.left, defaults.left), top: num(el.top, defaults.top),
-          pitchX: num(el.pitchX, defaults.pitchX), pitchY: num(el.pitchY, defaults.pitchY),
+          gapX: Math.max(0, num(el.gapX, defaults.gapX)), gapY: Math.max(0, num(el.gapY, defaults.gapY)),
+          pitchX: labelWidth + Math.max(0, num(el.gapX, defaults.gapX)),
+          pitchY: labelHeight + Math.max(0, num(el.gapY, defaults.gapY)),
           moveRight, moveLeft, moveDown, moveUp,
           offsetX: moveRight - moveLeft,
           offsetY: moveDown - moveUp,
           guides: el.guides.checked,
-          skippedSlots: [...skippedSlots].sort((a, b) => a - b)
+          skippedSlots: [...skippedSlots].filter(slot => slot <= total).sort((a, b) => a - b),
+          customLabels: Object.fromEntries([...customLabels].filter(([slot]) => slot <= total))
         };
       };
 
-      function labelsForSequence(sequence, duplicate) {
+      function labelsForSequence(sequence, duplicate, total) {
         if (sequence.end < sequence.start) return [];
-        const count = Math.min(TOTAL, sequence.end - sequence.start + 1);
+        const count = Math.min(total, sequence.end - sequence.start + 1);
         const items = [];
         for (let i = 0; i < count; i++) {
           const text = sequence.prefix + String(sequence.start + i).padStart(sequence.padding, '0');
@@ -408,17 +451,23 @@
       }
 
       function buildAssignments(s) {
-        const assignments = Array(TOTAL).fill(null);
+        const assignments = Array(s.total).fill(null);
         const conflicts = new Set();
         const skipped = new Set(s.skippedSlots);
+        const reserved = new Set([...skipped, ...Object.keys(s.customLabels).map(Number)]);
         let clipped = 0;
+        Object.entries(s.customLabels).forEach(([slot, text]) => {
+          const index = Number(slot) - 1;
+          const omittedFirstRow = s.omitFirstRow && Number(slot) <= s.columns;
+          if (!omittedFirstRow && !skipped.has(Number(slot)) && index >= 0 && index < s.total) assignments[index] = { text, duplicate: false, custom: true };
+        });
         s.sequences.forEach((sequence, sequenceIndex) => {
-          const items = labelsForSequence(sequence, s.duplicate);
-          const firstSlot = Math.max(sequence.startSlot, s.omitFirstRow ? COLS + 1 : 1);
+          const items = labelsForSequence(sequence, s.duplicate, s.total);
+          const firstSlot = Math.max(sequence.startSlot, s.omitFirstRow ? s.columns + 1 : 1);
           let slotIndex = firstSlot - 1;
           items.forEach(item => {
-            while (slotIndex < TOTAL && skipped.has(slotIndex + 1)) slotIndex++;
-            if (slotIndex >= TOTAL) { clipped++; return; }
+            while (slotIndex < s.total && reserved.has(slotIndex + 1)) slotIndex++;
+            if (slotIndex >= s.total) { clipped++; return; }
             if (assignments[slotIndex]) { conflicts.add(slotIndex + 1); slotIndex++; return; }
             assignments[slotIndex] = { ...item, sequenceIndex };
             slotIndex++;
@@ -428,14 +477,15 @@
       }
 
       function rectangleSlots(startSlot, endSlot) {
+        const columns = state().columns;
         const startIndex = startSlot - 1, endIndex = endSlot - 1;
-        const startRow = Math.floor(startIndex / COLS), startCol = startIndex % COLS;
-        const endRow = Math.floor(endIndex / COLS), endCol = endIndex % COLS;
+        const startRow = Math.floor(startIndex / columns), startCol = startIndex % columns;
+        const endRow = Math.floor(endIndex / columns), endCol = endIndex % columns;
         const topRow = Math.min(startRow, endRow), bottomRow = Math.max(startRow, endRow);
         const leftCol = Math.min(startCol, endCol), rightCol = Math.max(startCol, endCol);
         const slots = [];
         for (let row = topRow; row <= bottomRow; row++) {
-          for (let col = leftCol; col <= rightCol; col++) slots.push(row * COLS + col + 1);
+          for (let col = leftCol; col <= rightCol; col++) slots.push(row * columns + col + 1);
         }
         return slots;
       }
@@ -450,8 +500,12 @@
         if (!skipDrag || skipDrag.endSlot === endSlot) return;
         skipDrag.endSlot = endSlot;
         skippedSlots = new Set(skipDrag.originalSlots);
+        customLabels = new Map(skipDrag.originalCustomLabels);
         rectangleSlots(skipDrag.startSlot, endSlot).forEach(slot => {
-          if (skipDrag.mark) skippedSlots.add(slot);
+          if (skipDrag.mark) {
+            skippedSlots.add(slot);
+            customLabels.delete(slot);
+          }
           else skippedSlots.delete(slot);
         });
         render();
@@ -460,23 +514,26 @@
       function render() {
         const s = state();
         const layout = buildAssignments(s);
-        const lastRight = s.left + s.offsetX + (COLS - 1) * s.pitchX + LABEL_W;
-        const lastBottom = s.top + s.offsetY + (ROWS - 1) * s.pitchY + LABEL_H;
-        const fits = s.left + s.offsetX >= 0 && s.top + s.offsetY >= 0 && lastRight <= SHEET_W && lastBottom <= SHEET_H;
+        const lastRight = s.left + s.offsetX + (s.columns - 1) * s.pitchX + s.labelWidth;
+        const lastBottom = s.top + s.offsetY + (s.rows - 1) * s.pitchY + s.labelHeight;
+        const fits = s.left + s.offsetX >= 0 && s.top + s.offsetY >= 0 && lastRight <= s.pageWidth && lastBottom <= s.pageHeight;
+        sheet.style.width = mm(s.pageWidth);
+        sheet.style.height = mm(s.pageHeight);
         sheet.innerHTML = '';
         sheet.classList.toggle('screen-guides', s.guides && !calibrationMode);
         sheet.classList.toggle('calibration', calibrationMode);
         sheet.classList.toggle('mark-skips', skipSelectionMode);
+        sheet.classList.toggle('edit-custom', customSelectionMode);
 
-        for (let i = 0; i < TOTAL; i++) {
-          const row = Math.floor(i / COLS), col = i % COLS;
+        for (let i = 0; i < s.total; i++) {
+          const row = Math.floor(i / s.columns), col = i % s.columns;
           const label = document.createElement('div');
           label.className = 'label';
           label.dataset.slot = String(i + 1);
           label.style.left = mm(s.left + s.offsetX + col * s.pitchX);
           label.style.top = mm(s.top + s.offsetY + row * s.pitchY);
-          label.style.width = mm(LABEL_W);
-          label.style.height = mm(LABEL_H);
+          label.style.width = mm(s.labelWidth);
+          label.style.height = mm(s.labelHeight);
           label.style.fontSize = `${s.fontSize}pt`;
           label.style.fontFamily = s.fontFamily;
           if (!calibrationMode) {
@@ -488,6 +545,7 @@
             } else if (item) {
               label.textContent = item.text;
               if (item.duplicate) label.classList.add('duplicate');
+              if (item.custom) label.classList.add('custom-label');
             } else label.classList.add('empty');
           }
           sheet.appendChild(label);
@@ -497,11 +555,14 @@
         // It is 0.1mm under the page boundary to avoid print-engine rounding,
         // while every label keeps its exact absolute millimetre coordinates.
         printSheet.className = calibrationMode ? 'calibration' : '';
+        printSheet.style.width = mm(s.pageWidth);
+        printSheet.style.height = mm(s.pageHeight);
         printSheet.innerHTML = sheet.innerHTML;
 
         const printed = layout.assignments.filter(Boolean).length;
         status.className = `status${(!fits || layout.clipped || layout.conflicts.length) ? ' error' : ''}`;
-        const modeText = `${s.duplicate ? ' Duplicate mode: centered original, then left-justified duplicate.' : ''}${s.omitFirstRow ? ' First row (slots 1-9) is blank.' : ''}${s.skippedSlots.length ? ` ${s.skippedSlots.length} manually skipped position${s.skippedSlots.length === 1 ? '' : 's'}.` : ''}`;
+        const customCount = Object.keys(s.customLabels).length;
+        const modeText = `${s.duplicate ? ' Duplicate mode: centered original, then left-justified duplicate.' : ''}${s.omitFirstRow ? ` First row (slots 1-${s.columns}) is blank.` : ''}${s.skippedSlots.length ? ` ${s.skippedSlots.length} manually skipped position${s.skippedSlots.length === 1 ? '' : 's'}.` : ''}${customCount ? ` ${customCount} individual label${customCount === 1 ? '' : 's'}.` : ''}`;
         if (!fits) {
           status.textContent = `The grid exceeds the sheet: right edge ${lastRight.toFixed(2)} mm, bottom edge ${lastBottom.toFixed(2)} mm.`;
         } else if (layout.conflicts.length) {
@@ -509,12 +570,20 @@
         } else {
           status.textContent = `${printed} sticker${printed === 1 ? '' : 's'} ready${layout.clipped ? `; ${layout.clipped} additional sticker${layout.clipped === 1 ? '' : 's'} cannot fit on this sheet.` : '.'}${modeText}`;
         }
-        readout.textContent = `Grid extent: ${(lastRight - (s.left + s.offsetX)).toFixed(2)} × ${(lastBottom - (s.top + s.offsetY)).toFixed(2)} mm · Last edge ${lastRight.toFixed(2)} mm right / ${lastBottom.toFixed(2)} mm bottom · Net offset X ${s.offsetX.toFixed(1)} mm, Y ${s.offsetY.toFixed(1)} mm`;
+        readout.textContent = `Grid extent: ${(lastRight - (s.left + s.offsetX)).toFixed(2)} × ${(lastBottom - (s.top + s.offsetY)).toFixed(2)} mm · Remaining right margin ${(s.pageWidth - lastRight).toFixed(2)} mm / bottom margin ${(s.pageHeight - lastBottom).toFixed(2)} mm · Net offset X ${s.offsetX.toFixed(1)} mm, Y ${s.offsetY.toFixed(1)} mm`;
         skipModeBtn.textContent = skipSelectionMode ? 'Done marking empty positions' : 'Mark empty positions';
         skipModeBtn.setAttribute('aria-pressed', String(skipSelectionMode));
         skipModeBtn.className = skipSelectionMode ? 'primary' : 'quiet';
         clearSkippedBtn.textContent = `Clear skipped (${s.skippedSlots.length})`;
         clearSkippedBtn.disabled = s.skippedSlots.length === 0;
+        customModeBtn.textContent = customSelectionMode ? 'Done entering individual labels' : 'Enter individual labels';
+        customModeBtn.setAttribute('aria-pressed', String(customSelectionMode));
+        customModeBtn.className = customSelectionMode ? 'primary' : 'quiet';
+        clearCustomBtn.textContent = `Clear individual (${customCount})`;
+        clearCustomBtn.disabled = customCount === 0;
+        sheetSummary.textContent = `${s.pageWidth} × ${s.pageHeight} mm sheet · ${s.columns} columns × ${s.rows} rows · ${s.labelWidth} × ${s.labelHeight} mm labels`;
+        document.title = `Label Sticker Studio — ${s.pageWidth} × ${s.pageHeight} mm`;
+        sequencesContainer.querySelectorAll('[data-field="startSlot"]').forEach(input => input.max = String(s.total));
         try { localStorage.setItem('label-studio-multisequence-v3', JSON.stringify(s)); } catch (_) {}
         requestAnimationFrame(fitPreview);
       }
@@ -529,14 +598,14 @@
       function buildPdf(asCalibration) {
         const s = state();
         const layout = buildAssignments(s);
-        const pageW = pt(SHEET_W), pageH = pt(SHEET_H);
-        const labelW = pt(LABEL_W), labelH = pt(LABEL_H);
+        const pageW = pt(s.pageWidth), pageH = pt(s.pageHeight);
+        const labelW = pt(s.labelWidth), labelH = pt(s.labelHeight);
         const baseFont = s.fontFamily.includes('Courier') ? 'Courier' : 'Helvetica';
         const fontWidthFactor = baseFont === 'Courier' ? 0.6 : 0.52;
         const commands = ['0 G', '0 g', '0.35 w'];
 
-        for (let i = 0; i < TOTAL; i++) {
-          const row = Math.floor(i / COLS), col = i % COLS;
+        for (let i = 0; i < s.total; i++) {
+          const row = Math.floor(i / s.columns), col = i % s.columns;
           if (s.omitFirstRow && row === 0) continue;
           const x = pt(s.left + s.offsetX + col * s.pitchX);
           const top = pt(s.top + s.offsetY + row * s.pitchY);
@@ -601,7 +670,8 @@
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
         link.href = url;
-        link.download = asCalibration ? 'Label_Calibration_200x160mm.pdf' : 'Labels_200x160mm.pdf';
+        const sizeName = `${state().pageWidth}x${state().pageHeight}mm`;
+        link.download = asCalibration ? `Label_Calibration_${sizeName}.pdf` : `Labels_${sizeName}.pdf`;
         link.target = '_blank';
         link.rel = 'noopener';
         document.body.appendChild(link);
@@ -609,7 +679,8 @@
         link.remove();
         setTimeout(() => URL.revokeObjectURL(url), 60000);
         status.className = 'status';
-        status.textContent = `${asCalibration ? 'Calibration' : 'Label'} PDF downloaded: one page, exactly 200 × 160 mm.`;
+        const s = state();
+        status.textContent = `${asCalibration ? 'Calibration' : 'Label'} PDF downloaded: one page, exactly ${s.pageWidth} × ${s.pageHeight} mm.`;
       }
 
       window.addEventListener('beforeprint', () => {
@@ -618,7 +689,7 @@
       });
       window.addEventListener('afterprint', () => {
         calibrationMode = false;
-        document.title = 'Label Sticker Studio — 200 × 160 mm';
+        document.title = 'Label Sticker Studio';
         render();
       });
       window.addEventListener('resize', fitPreview, { passive: true });
@@ -635,10 +706,40 @@
       });
       skipModeBtn.addEventListener('click', () => {
         skipSelectionMode = !skipSelectionMode;
+        if (skipSelectionMode) customSelectionMode = false;
         render();
       });
       clearSkippedBtn.addEventListener('click', () => {
         skippedSlots.clear();
+        render();
+      });
+      customModeBtn.addEventListener('click', () => {
+        customSelectionMode = !customSelectionMode;
+        if (customSelectionMode) skipSelectionMode = false;
+        render();
+      });
+      clearCustomBtn.addEventListener('click', () => {
+        customLabels.clear();
+        render();
+      });
+      sheet.addEventListener('click', event => {
+        if (!customSelectionMode) return;
+        const label = event.target.closest('.label');
+        if (!label) return;
+        const slot = Number(label.dataset.slot);
+        const s = state();
+        if (s.omitFirstRow && slot <= s.columns) {
+          status.className = 'status error';
+          status.textContent = `Slot ${slot} is in the omitted first row. Turn off “Leave the entire first row blank” before adding an individual label there.`;
+          return;
+        }
+        const current = customLabels.get(slot) || '';
+        const value = window.prompt(`Label text for sticker slot ${slot}:\nLeave blank to remove the individual label.`, current);
+        if (value === null) return;
+        if (value.trim()) {
+          customLabels.set(slot, value);
+          skippedSlots.delete(slot);
+        } else customLabels.delete(slot);
         render();
       });
       sheet.addEventListener('pointerdown', event => {
@@ -652,7 +753,8 @@
           startSlot,
           endSlot: null,
           mark: !skippedSlots.has(startSlot),
-          originalSlots: new Set(skippedSlots)
+          originalSlots: new Set(skippedSlots),
+          originalCustomLabels: new Map(customLabels)
         };
         sheet.setPointerCapture?.(event.pointerId);
         applySkipDrag(startSlot);
@@ -672,9 +774,9 @@
       document.getElementById('addSequenceBtn').addEventListener('click', () => {
         const s = state();
         const layout = buildAssignments(s);
-        const minimumIndex = s.omitFirstRow ? COLS : 0;
+        const minimumIndex = s.omitFirstRow ? s.columns : 0;
         let nextIndex = layout.assignments.findIndex((item, index) => index >= minimumIndex && !item && !skippedSlots.has(index + 1));
-        if (nextIndex < 0) nextIndex = TOTAL - 1;
+        if (nextIndex < 0) nextIndex = s.total - 1;
         addSequence({ prefix: '', start: 1, end: 1, padding: 4, startSlot: nextIndex + 1 });
         render();
       });
@@ -687,6 +789,7 @@
         });
         sequencesContainer.innerHTML = '';
         skippedSlots.clear();
+        customLabels.clear();
         addSequence(defaultSequence);
         render();
       });
@@ -703,8 +806,12 @@
           else if (el[id].type === 'checkbox') el[id].checked = Boolean(saved[id]);
           else el[id].value = saved[id];
         });
+        if (saved && !('gapX' in saved) && Number.isFinite(Number(saved.pitchX))) el.gapX.value = Math.max(0, Number(saved.pitchX) - defaults.labelWidth);
+        if (saved && !('gapY' in saved) && Number.isFinite(Number(saved.pitchY))) el.gapY.value = Math.max(0, Number(saved.pitchY) - defaults.labelHeight);
       } catch (_) {}
-      skippedSlots = new Set((saved?.skippedSlots || []).map(Number).filter(slot => Number.isInteger(slot) && slot >= 1 && slot <= TOTAL));
+      const initialTotal = Math.max(1, Math.trunc(num(el.columns, defaults.columns))) * Math.max(1, Math.trunc(num(el.rows, defaults.rows)));
+      skippedSlots = new Set((saved?.skippedSlots || []).map(Number).filter(slot => Number.isInteger(slot) && slot >= 1 && slot <= initialTotal));
+      customLabels = new Map(Object.entries(saved?.customLabels || {}).map(([slot, text]) => [Number(slot), String(text)]).filter(([slot, text]) => Number.isInteger(slot) && slot >= 1 && slot <= initialTotal && text));
       const startingSequences = saved?.sequences?.length ? saved.sequences : [defaultSequence];
       startingSequences.forEach(addSequence);
       render();
